@@ -1,9 +1,4 @@
 name: clustermonitoringerrorbudgetburn
-description: Retrieves status of the monitoring Cluster Operator
-author: typeid
-allowedGroups: 
-  - SREP #for development, TODO remove
-  - CAD
 rbac:
     roles: []
     clusterRoleRules:
