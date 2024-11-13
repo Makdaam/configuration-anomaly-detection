@@ -6,6 +6,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	bplogin "github.com/openshift/backplane-cli/cmd/ocm-backplane/login"
+	bpremediation "github.com/openshift/backplane-cli/cmd/ocm-backplane/remediation"
 	"github.com/openshift/backplane-cli/pkg/cli/config"
 	"github.com/openshift/configuration-anomaly-detection/pkg/ocm"
 	corev1 "k8s.io/api/core/v1"
@@ -13,23 +14,38 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func New(clusterID string, ocmClient ocm.Client) (client.Client, error) {
+func New(clusterID string, ocmClient ocm.Client, remediationName string) (string, client.Client, error) {
 	backplaneURL := os.Getenv("BACKPLANE_URL")
 	if backplaneURL == "" {
-		return nil, fmt.Errorf("could not create new k8sclient: missing environment variable BACKPLANE_URL")
+		return "", nil, fmt.Errorf("could not create new k8sclient: missing environment variable BACKPLANE_URL")
 	}
 
-	cfg, err := bplogin.GetRestConfigWithConn(config.BackplaneConfiguration{URL: backplaneURL}, ocmClient.GetConnection(), clusterID)
+	logincfg, err := bplogin.GetRestConfigWithConn(config.BackplaneConfiguration{URL: backplaneURL}, ocmClient.GetConnection(), clusterID)
 	if err != nil {
-		return nil, err
+		return "", nil, err
+	}
+
+	_, saname, err := bpremediation.CreateRemediationWithConn(config.BackplaneConfiguration{URL: backplaneURL}, ocmClient.GetConnection(), clusterID, remediationName)
+	if err != nil {
+		return "", nil, err
 	}
 
 	scheme, err := initScheme()
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
-	return client.New(cfg, client.Options{Scheme: scheme})
+	k8scli, err := client.New(logincfg, client.Options{Scheme: scheme})
+	return saname, k8scli, err
+}
+
+func CleanUp(clusterID string, ocmClient ocm.Client, SAname string) error {
+	backplaneURL := os.Getenv("BACKPLANE_URL")
+	if backplaneURL == "" {
+		return fmt.Errorf("could not clean up k8sclient: missing environment variable BACKPLANE_URL")
+	}
+	// only err has to be returned
+	return bpremediation.DeleteRemediationWithConn(config.BackplaneConfiguration{URL: backplaneURL}, ocmClient.GetConnection(), clusterID, SAname)
 }
 
 // Initialize all apis we need in CAD
